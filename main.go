@@ -17,6 +17,7 @@ var (
 	bucketFlag     = flags.String("bucket", "", "s3 bucket")
 	prefixFlag     = flags.String("prefix", "", "s3 path prefix")
 	sourcePathFlag = flags.String("source", "", "local source path to upload")
+	dryrunFlag     = flags.Bool("dryrun", false, "Dryrun, dont upload anything, just list files to upload")
 )
 
 func main() {
@@ -58,7 +59,7 @@ func main() {
 		log.Fatal(err)
 		os.Exit(1)
 	}
-	n, err := s3up.Upload()
+	n, err := s3up.Upload(*dryrunFlag)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)

@@ -104,7 +104,7 @@ func (s *S3Upload) sourceFiles() ([]string, error) {
 	return files, nil
 }
 
-func (s *S3Upload) Upload() (int, error) {
+func (s *S3Upload) Upload(dryrun bool) (int, error) {
 	files, err := s.sourceFiles()
 	if err != nil {
 		return 0, err
@@ -127,7 +127,11 @@ func (s *S3Upload) Upload() (int, error) {
 
 		destPath := filepath.Join("/", s.Config.S3.Prefix, path)
 
-		fmt.Printf("uploading %s ...\n", destPath)
+		if dryrun {
+			fmt.Printf("[DRYRUN] uploading %s ...\n", destPath)
+		} else {
+			fmt.Printf("uploading %s ...\n", destPath)
+		}
 
 		acl := s.Config.S3.ACL
 		if acl == "" {
@@ -142,11 +146,13 @@ func (s *S3Upload) Upload() (int, error) {
 			Body:        file,
 		}
 
-		req, _ := s3c.PutObjectRequest(obj)
-		if err := req.Send(); err != nil {
-			return num, err
+		if !dryrun {
+			req, _ := s3c.PutObjectRequest(obj)
+			if err := req.Send(); err != nil {
+				return num, err
+			}
+			num += 1
 		}
-		num += 1
 	}
 
 	return num, nil
