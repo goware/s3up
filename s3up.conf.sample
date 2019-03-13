@@ -1,0 +1,23 @@
+[s3]
+access_key           = ""
+access_secret_key    = ""
+region               = ""
+bucket               = "assets.example.com"
+prefix               = ""
+
+# s3 access control, must be one of: private (default), public-read, public-read-write, ..
+# see https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html for full list
+acl                  = "public-read"
+
+# glob ignore patterns
+ignore = [
+  ".git/**/*",
+  ".gitignore", 
+  "README.md",
+  "Makefile",
+  "**/.DS_Store",
+  "*.conf*"
+]
+
+source               = "."
+
