@@ -7,6 +7,8 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -104,56 +106,94 @@ func (s *S3Upload) sourceFiles() ([]string, error) {
 	return files, nil
 }
 
-func (s *S3Upload) Upload(dryrun bool) (int, error) {
+func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
+	num := 0
+	s3c := s.Conn
+
+	file, err := os.Open(path)
+	if err != nil {
+		return num, err
+	}
+	defer file.Close()
+
+	mimeType := mime.TypeByExtension(filepath.Ext(path))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	destPath := filepath.Join("/", s.Config.S3.Prefix, path)
+
+	if dryrun {
+		fmt.Printf("[DRYRUN] uploading %s ...\n", destPath)
+	} else {
+		fmt.Printf("uploading %s ...\n", destPath)
+	}
+
+	acl := s.Config.S3.ACL
+	if acl == "" {
+		acl = "private"
+	}
+
+	obj := &s3.PutObjectInput{
+		Bucket:      aws.String(s.Config.S3.Bucket),
+		Key:         aws.String(destPath),
+		ACL:         aws.String(acl),
+		ContentType: aws.String(mimeType),
+		Body:        file,
+	}
+
+	if !dryrun {
+		req, _ := s3c.PutObjectRequest(obj)
+		if err := req.Send(); err != nil {
+			return num, err
+		}
+		num += 1
+	}
+
+	return num, nil
+}
+
+func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 	files, err := s.sourceFiles()
 	if err != nil {
 		return 0, err
 	}
 
-	// upload to S3
-	num := 0
-	s3c := s.Conn
-
+	fch := make(chan string, len(files))
 	for _, path := range files {
-		file, err := os.Open(path)
-		if err != nil {
-			return num, err
-		}
+		fch <- path
+	}
+	close(fch)
 
-		mimeType := mime.TypeByExtension(filepath.Ext(path))
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
+	var num uint64
+	var uploadErr error
+	var stop bool
 
-		destPath := filepath.Join("/", s.Config.S3.Prefix, path)
+	var wg sync.WaitGroup
+	for i := 0; i < parallel; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for path := range fch {
+				if stop {
+					return
+				}
+				n, err := s.uploadFile(path, dryrun)
+				if err != nil {
+					stop = true
+					uploadErr = err
+					return
+				}
+				atomic.AddUint64(&num, uint64(n))
 
-		if dryrun {
-			fmt.Printf("[DRYRUN] uploading %s ...\n", destPath)
-		} else {
-			fmt.Printf("uploading %s ...\n", destPath)
-		}
-
-		acl := s.Config.S3.ACL
-		if acl == "" {
-			acl = "private"
-		}
-
-		obj := &s3.PutObjectInput{
-			Bucket:      aws.String(s.Config.S3.Bucket),
-			Key:         aws.String(destPath),
-			ACL:         aws.String(acl),
-			ContentType: aws.String(mimeType),
-			Body:        file,
-		}
-
-		if !dryrun {
-			req, _ := s3c.PutObjectRequest(obj)
-			if err := req.Send(); err != nil {
-				return num, err
 			}
-			num += 1
-		}
+		}(i)
 	}
 
+	if uploadErr != nil {
+		return num, uploadErr
+	}
+
+	wg.Wait()
 	return num, nil
 }
