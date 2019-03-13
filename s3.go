@@ -7,6 +7,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -15,18 +16,23 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	zglob "github.com/mattn/go-zglob"
+	"github.com/mattn/go-zglob"
 )
 
 type S3Upload struct {
-	Config *Config
-	Conn   *s3.S3
+	Config     *Config
+	Conn       *s3.S3
+	SourcePath string
 }
 
 func NewS3Upload(cfg *Config) (*S3Upload, error) {
 	var err error
 	s3c := &S3Upload{Config: cfg}
 	s3c.Conn, err = s3c.newSession()
+	if err != nil {
+		return nil, err
+	}
+	s3c.SourcePath, err = filepath.Abs(cfg.S3.Source)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +79,17 @@ func (s *S3Upload) isUploadableFile(path string) (bool, error) {
 
 func (s *S3Upload) sourceFiles() ([]string, error) {
 	var files []string
-	source := s.Config.S3.Source
+	source := s.SourcePath
 
 	err := filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		cpath := strings.TrimPrefix(path, s.SourcePath)
+		if cpath == "" {
+			return nil
+		}
+		cpath = cpath[1:]
+
 		// Skip ignored files
-		ok, err := s.isUploadableFile(path)
+		ok, err := s.isUploadableFile(cpath)
 		if err != nil {
 			return err
 		}
@@ -95,7 +107,7 @@ func (s *S3Upload) sourceFiles() ([]string, error) {
 		}
 
 		// Add to the list of files to upload
-		files = append(files, path)
+		files = append(files, cpath)
 		return nil
 	})
 
@@ -110,7 +122,7 @@ func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
 	num := 0
 	s3c := s.Conn
 
-	file, err := os.Open(path)
+	file, err := os.Open(filepath.Join(s.SourcePath, path))
 	if err != nil {
 		return num, err
 	}
@@ -166,8 +178,6 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 	close(fch)
 
 	var num uint64
-	var uploadErr error
-	var stop bool
 
 	var wg sync.WaitGroup
 	for i := 0; i < parallel; i++ {
@@ -175,23 +185,14 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 		go func(i int) {
 			defer wg.Done()
 			for path := range fch {
-				if stop {
-					return
-				}
 				n, err := s.uploadFile(path, dryrun)
 				if err != nil {
-					stop = true
-					uploadErr = err
+					panic(err)
 					return
 				}
 				atomic.AddUint64(&num, uint64(n))
-
 			}
 		}(i)
-	}
-
-	if uploadErr != nil {
-		return num, uploadErr
 	}
 
 	wg.Wait()
