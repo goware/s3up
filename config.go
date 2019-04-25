@@ -9,14 +9,15 @@ import (
 
 type Config struct {
 	S3 struct {
-		AccessKey string   `toml:"access_key"`
-		SecretKey string   `toml:"access_secret_key"`
-		Region    string   `toml:"region"`
-		Bucket    string   `toml:"bucket"`
-		Prefix    string   `toml:"prefix"`
-		ACL       string   `toml:"acl"`
-		Ignore    []string `toml:"ignore"`
-		Source    string   `toml:"source"`
+		AccessKey    string   `toml:"access_key"`
+		SecretKey    string   `toml:"access_secret_key"`
+		Region       string   `toml:"region"`
+		Bucket       string   `toml:"bucket"`
+		Prefix       string   `toml:"prefix"`
+		ACL          string   `toml:"acl"`
+		CacheControl string   `toml:"cache_control"`
+		Ignore       []string `toml:"ignore"`
+		Source       string   `toml:"source"`
 	} `toml:"s3"`
 }
 

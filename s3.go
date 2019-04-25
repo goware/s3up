@@ -154,6 +154,10 @@ func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
 		Body:        file,
 	}
 
+	if s.Config.S3.CacheControl != "" {
+		obj.CacheControl = aws.String(s.Config.S3.CacheControl)
+	}
+
 	if !dryrun {
 		req, _ := s3c.PutObjectRequest(obj)
 		if err := req.Send(); err != nil {
