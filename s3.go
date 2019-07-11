@@ -10,8 +10,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -42,7 +44,9 @@ func NewS3Upload(cfg *Config) (*S3Upload, error) {
 func (s *S3Upload) newSession() (*s3.S3, error) {
 	cfg := s.Config
 
-	sess, err := session.NewSession(aws.NewConfig())
+	awsConfig := &aws.Config{}
+
+	sess, err := session.NewSession(awsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -189,10 +193,24 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 		go func(i int) {
 			defer wg.Done()
 			for path := range fch {
+				numRetries := 30
+			RETRY:
 				n, err := s.uploadFile(path, dryrun)
 				if err != nil {
-					panic(err)
-					return
+					_, ok := err.(awserr.Error)
+					if ok {
+						numRetries -= 1
+						if numRetries > 0 {
+							// retry in 1 second
+							fmt.Printf("failed to upload %s, retrying in 1 second ...\n", path)
+							time.Sleep(1 * time.Second)
+							goto RETRY
+						} else {
+							panic(err)
+						}
+					} else {
+						panic(fmt.Sprintf("unknown error! %v", err))
+					}
 				}
 				atomic.AddUint64(&num, uint64(n))
 			}

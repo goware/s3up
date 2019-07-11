@@ -11,6 +11,7 @@ import (
 var (
 	flags = flag.NewFlagSet("s3up", flag.ExitOnError)
 
+	versionFlag    = flags.Bool("version", false, "print the version and exit")
 	configFlag     = flags.String("config", "", "config file")
 	accessKeyFlag  = flags.String("access_key", "", "s3 access key")
 	secretKeyFlag  = flags.String("secret_key", "", "s3 secret key")
@@ -23,8 +24,20 @@ var (
 	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
 )
 
+const VERSION = "0.2.0"
+
 func main() {
 	flags.Parse(os.Args[1:])
+
+	if len(os.Args) == 1 {
+		flags.Usage()
+		os.Exit(0)
+	}
+
+	if *versionFlag {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
 
 	cfg, err := newConfig(*configFlag)
 	if err != nil {
@@ -98,10 +111,8 @@ func confirm(cfg *Config) bool {
 	switch char {
 	case 'Y':
 		return true
-		break
 	case 'y':
 		return true
-		break
 	}
 
 	return false
