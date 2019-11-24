@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -22,6 +23,10 @@ var (
 	dryrunFlag     = flags.Bool("dryrun", false, "Dryrun, dont upload anything, just list files to upload")
 	confirmFlag    = flags.Bool("confirm", false, "Confirm final settings with user before triggering upload")
 	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
+	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", false,
+		"Compute the md5 hash of a file's contents and set it as a first path segment")
+	syncFlag = flags.Bool("sync", false, "Only upload files that are new or have changed")
+	listFlag = flags.Bool("list", false, "List files data to be processed")
 )
 
 const VERSION = "0.2.0"
@@ -42,7 +47,6 @@ func main() {
 	cfg, err := newConfig(*configFlag)
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
 
 	// override from file configs if specific flags provided
@@ -67,24 +71,39 @@ func main() {
 
 	if cfg.S3.Source == "" {
 		log.Fatal("invalid source path")
-		os.Exit(1)
-	}
-
-	if *confirmFlag {
-		if !confirm(cfg) {
-			os.Exit(0)
-		}
 	}
 
 	s3up, err := NewS3Upload(cfg)
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
+
+	// just list files, it is like dry-run but with output as JSON array
+	if *listFlag {
+		fileDataList, err := s3up.sourceFiles()
+		if err != nil {
+			log.Fatal(err)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "    ")
+		if err := enc.Encode(fileDataList); err != nil {
+			log.Fatal(err)
+		}
+		os.Exit(0)
+	}
+
+	if err := s3up.Connect(); err != nil {
+		log.Fatal(err)
+	}
+
+	if *confirmFlag && !confirm(cfg) {
+		os.Exit(0)
+	}
+
+	// run actual upload
 	n, err := s3up.Upload(*parallelFlag, *dryrunFlag)
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
 	fmt.Printf("\nDone! uploaded %d files.\n", n)
 }
@@ -92,11 +111,13 @@ func main() {
 func confirm(cfg *Config) bool {
 	fmt.Println("s3up config:")
 	fmt.Println("------------")
-	fmt.Println("BUCKET     :  ", cfg.S3.Bucket)
-	fmt.Println("PREFIX     :  ", cfg.S3.Prefix)
-	fmt.Println("SOURCE     :  ", cfg.S3.Source)
-	fmt.Println("ACL        :  ", cfg.S3.ACL)
-	fmt.Println("IGNORE     :  ", cfg.S3.Ignore)
+	fmt.Println("BUCKET      :  ", cfg.S3.Bucket)
+	fmt.Println("PREFIX      :  ", cfg.S3.Prefix)
+	fmt.Println("SOURCE      :  ", cfg.S3.Source)
+	fmt.Println("ACL         :  ", cfg.S3.ACL)
+	fmt.Println("IGNORE      :  ", cfg.S3.Ignore)
+	fmt.Println("HASH PREFIX :  ", *hashPrefixFlag)
+	fmt.Println("SYNC        :  ", *syncFlag)
 	fmt.Println("")
 	fmt.Printf("upload? (y/n): ")
 
@@ -105,7 +126,6 @@ func confirm(cfg *Config) bool {
 
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
 
 	switch char {

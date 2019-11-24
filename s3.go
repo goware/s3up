@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,18 +30,33 @@ type S3Upload struct {
 	SourcePath string
 }
 
+// FileData contains data of file to be uploaded
+type FileData struct {
+	origPath string
+	Path     string `json:"path"`
+	Size     int64  `json:"size"`
+	MD5Hash  string `json:"md5_hash"`
+}
+
 func NewS3Upload(cfg *Config) (*S3Upload, error) {
 	var err error
 	s3c := &S3Upload{Config: cfg}
-	s3c.Conn, err = s3c.newSession()
-	if err != nil {
-		return nil, err
-	}
 	s3c.SourcePath, err = filepath.Abs(cfg.S3.Source)
 	if err != nil {
 		return nil, err
 	}
 	return s3c, nil
+}
+
+// Connect opens connection to AWS and sets up session
+func (s *S3Upload) Connect() error {
+	var err error
+	s.Conn, err = s.newSession()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *S3Upload) newSession() (*s3.S3, error) {
@@ -81,18 +99,17 @@ func (s *S3Upload) isUploadableFile(path string) (bool, error) {
 	return true, nil
 }
 
-func (s *S3Upload) sourceFiles() ([]string, error) {
-	var files []string
+func (s *S3Upload) sourceFiles() ([]*FileData, error) {
+	var files []*FileData
 	source := s.SourcePath
 
 	err := filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		// Skip ignored files
 		cpath := strings.TrimPrefix(path, s.SourcePath)
 		if cpath == "" {
 			return nil
 		}
 		cpath = cpath[1:]
-
-		// Skip ignored files
 		ok, err := s.isUploadableFile(cpath)
 		if err != nil {
 			return err
@@ -101,17 +118,46 @@ func (s *S3Upload) sourceFiles() ([]string, error) {
 			return nil
 		}
 
-		// Skip if path is directory
-		fi, err := os.Stat(path)
+		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		if fi.IsDir() {
+		defer file.Close()
+
+		// Skip if path is directory
+		fileInfo, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if fileInfo.IsDir() {
 			return nil
 		}
 
+		// calculate md5-hash of file
+		h := md5.New()
+		if _, err := io.Copy(h, file); err != nil {
+			return err
+		}
+		md5Hash := fmt.Sprintf("%x", h.Sum(nil))
+
+		// add md5 hash as prefix if required
+		hashPrefix := ""
+		if *hashPrefixFlag {
+			hashPrefix = md5Hash
+		}
+
+		destPath := filepath.Join("/", hashPrefix, s.Config.S3.Prefix, cpath)
+
 		// Add to the list of files to upload
-		files = append(files, cpath)
+		files = append(
+			files,
+			&FileData{
+				origPath: path,
+				Path:     destPath,
+				Size:     fileInfo.Size(),
+				MD5Hash:  md5Hash,
+			},
+		)
 		return nil
 	})
 
@@ -122,27 +168,57 @@ func (s *S3Upload) sourceFiles() ([]string, error) {
 	return files, nil
 }
 
-func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
-	num := 0
+func (s *S3Upload) uploadFile(fileData *FileData, dryrun bool) (int, error) {
 	s3c := s.Conn
 
-	file, err := os.Open(filepath.Join(s.SourcePath, path))
+	file, err := os.Open(fileData.origPath)
 	if err != nil {
-		return num, err
+		return 0, err
 	}
 	defer file.Close()
 
-	mimeType := mime.TypeByExtension(filepath.Ext(path))
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
+	// check if object exists if specified in flags
+	if *syncFlag {
+		headOutput, err := s3c.HeadObject(&s3.HeadObjectInput{
+			Bucket: aws.String(s.Config.S3.Bucket),
+			Key:    aws.String(fileData.Path),
+		})
+
+		if err == nil {
+			// file exists on S3, check if we need to proceed with upload
+			if *hashPrefixFlag {
+				// don't upload if md5-hash prefix was used and it is already on S3
+				fmt.Printf("File %s is already on S3\n", fileData.Path)
+				return 0, nil
+			} else {
+				// md5-hash wasn't used to upload, lets compare md5-hashes on S3 and local file system
+				if headOutput != nil &&
+					headOutput.ETag != nil && strings.Trim(*headOutput.ETag, "\"") == fileData.MD5Hash {
+					fmt.Printf("File %s hasn't been changed (copy on S3 has the same md5-hash in ETag)\n",
+						fileData.Path)
+					return 0, nil
+				}
+			}
+		} else {
+			// check error, return if it is not 404
+			if reqErr, ok := err.(awserr.RequestFailure); !ok {
+				return 0, err
+			} else if reqErr.StatusCode() != http.StatusNotFound {
+				return 0, err
+			}
+		}
 	}
 
-	destPath := filepath.Join("/", s.Config.S3.Prefix, path)
-
 	if dryrun {
-		fmt.Printf("[DRYRUN] uploading %s ...\n", destPath)
-	} else {
-		fmt.Printf("uploading %s ...\n", destPath)
+		fmt.Printf("[DRYRUN] uploading %s ...\n", fileData.Path)
+		return 0, nil
+	}
+
+	fmt.Printf("uploading %s ...\n", fileData.Path)
+
+	mimeType := mime.TypeByExtension(filepath.Ext(fileData.origPath))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
 	}
 
 	acl := s.Config.S3.ACL
@@ -152,7 +228,7 @@ func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
 
 	obj := &s3.PutObjectInput{
 		Bucket:      aws.String(s.Config.S3.Bucket),
-		Key:         aws.String(destPath),
+		Key:         aws.String(fileData.Path),
 		ACL:         aws.String(acl),
 		ContentType: aws.String(mimeType),
 		Body:        file,
@@ -162,26 +238,24 @@ func (s *S3Upload) uploadFile(path string, dryrun bool) (int, error) {
 		obj.CacheControl = aws.String(s.Config.S3.CacheControl)
 	}
 
-	if !dryrun {
-		req, _ := s3c.PutObjectRequest(obj)
-		if err := req.Send(); err != nil {
-			return num, err
-		}
-		num += 1
+	req, _ := s3c.PutObjectRequest(obj)
+	if err := req.Send(); err != nil {
+		return 0, err
 	}
 
-	return num, nil
+	return 1, nil
 }
 
 func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
+	// get list of files with data
 	files, err := s.sourceFiles()
 	if err != nil {
 		return 0, err
 	}
 
-	fch := make(chan string, len(files))
-	for _, path := range files {
-		fch <- path
+	fch := make(chan *FileData, len(files))
+	for _, fileData := range files {
+		fch <- fileData
 	}
 	close(fch)
 
@@ -192,17 +266,17 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for path := range fch {
+			for fileData := range fch {
 				numRetries := 30
 			RETRY:
-				n, err := s.uploadFile(path, dryrun)
+				n, err := s.uploadFile(fileData, dryrun)
 				if err != nil {
 					_, ok := err.(awserr.Error)
 					if ok {
 						numRetries -= 1
 						if numRetries > 0 {
 							// retry in 1 second
-							fmt.Printf("failed to upload %s, retrying in 1 second ...\n", path)
+							fmt.Printf("failed to upload %s, retrying in 1 second ...\n", fileData.origPath)
 							time.Sleep(1 * time.Second)
 							goto RETRY
 						} else {
