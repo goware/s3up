@@ -12,7 +12,7 @@ acl                  = "public-read"
 # glob ignore patterns
 ignore = [
   ".git/**/*",
-  ".gitignore", 
+  ".gitignore",
   "README.md",
   "Makefile",
   "**/.DS_Store",
@@ -21,3 +21,14 @@ ignore = [
 
 source               = "."
 
+[[s3.mime_types]]
+ext   = ".json"
+type  = "application/json"
+
+[[s3.mime_types]]
+ext   = ".mp3"
+type  = "audio/mpeg"
+
+[[s3.mime_types]]
+ext   = ".m4a"
+type  = "audio/m4a"

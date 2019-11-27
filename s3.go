@@ -24,10 +24,13 @@ import (
 	"github.com/mattn/go-zglob"
 )
 
+var expiry *time.Time
+
 type S3Upload struct {
 	Config     *Config
 	Conn       *s3.S3
 	SourcePath string
+	expires    *time.Time
 }
 
 // FileData contains data of file to be uploaded
@@ -45,6 +48,12 @@ func NewS3Upload(cfg *Config) (*S3Upload, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.S3.ExpiresAfterSeconds != 0 {
+		t := time.Now().UTC().Add(time.Second * time.Duration(cfg.S3.ExpiresAfterSeconds))
+
+		s3c.expires = &t
+	}
+
 	return s3c, nil
 }
 
@@ -232,6 +241,7 @@ func (s *S3Upload) uploadFile(fileData *FileData, dryrun bool) (int, error) {
 		ACL:         aws.String(acl),
 		ContentType: aws.String(mimeType),
 		Body:        file,
+		Expires:     s.expires,
 	}
 
 	if s.Config.S3.CacheControl != "" {
