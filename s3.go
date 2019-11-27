@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -147,7 +148,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		if _, err := io.Copy(h, file); err != nil {
 			return err
 		}
-		md5Hash := fmt.Sprintf("%x", h.Sum(nil))
+		md5Hash := base64.URLEncoding.EncodeToString(h.Sum(nil))
 
 		// add md5 hash as prefix if required
 		hashPrefix := ""
