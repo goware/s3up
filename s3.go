@@ -37,10 +37,10 @@ type S3Upload struct {
 
 // FileData contains data of file to be uploaded
 type FileData struct {
-	origPath   string
-	Path       string `json:"path"`
+	origPath   string `json:"path"`
+	Path       string 
 	Size       int64  `json:"size"`
-	FilePrefix string `json:"file_prefix"`
+	FilePrefix string `json:"prefix"`
 	MD5Hash    string `json:"-"`
 }
 
