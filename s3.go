@@ -28,18 +28,20 @@ import (
 var expiry *time.Time
 
 type S3Upload struct {
-	Config     *Config
-	Conn       *s3.S3
-	SourcePath string
-	expires    *time.Time
+	Config      *Config
+	Conn        *s3.S3
+	SourcePath  string
+	expires     *time.Time
+	prefixBytes int
 }
 
 // FileData contains data of file to be uploaded
 type FileData struct {
-	origPath string
-	Path     string `json:"path"`
-	Size     int64  `json:"size"`
-	MD5Hash  string `json:"md5_hash"`
+	origPath   string
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	FilePrefix string `json:"file_prefix"`
+	MD5Hash    string `json:"-"`
 }
 
 func NewS3Upload(cfg *Config) (*S3Upload, error) {
@@ -53,6 +55,13 @@ func NewS3Upload(cfg *Config) (*S3Upload, error) {
 		t := time.Now().UTC().Add(time.Second * time.Duration(cfg.S3.ExpiresAfterSeconds))
 
 		s3c.expires = &t
+	}
+
+	if hashPrefixBytesFlag != nil && prefixFlag != nil {
+		s3c.prefixBytes = int(*hashPrefixBytesFlag)
+		if s3c.prefixBytes > 16 {
+			s3c.prefixBytes = 16
+		}
 	}
 
 	return s3c, nil
@@ -148,12 +157,12 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		if _, err := io.Copy(h, file); err != nil {
 			return err
 		}
-		md5Hash := base64.URLEncoding.EncodeToString(h.Sum(nil))
+		md5Hash := h.Sum(nil)
 
 		// add md5 hash as prefix if required
 		hashPrefix := ""
-		if *hashPrefixFlag {
-			hashPrefix = md5Hash
+		if s.prefixBytes > 0 {
+			hashPrefix = base64.URLEncoding.EncodeToString(md5Hash[:s.prefixBytes])
 		}
 
 		destPath := filepath.Join("/", hashPrefix, s.Config.S3.Prefix, cpath)
@@ -162,10 +171,11 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		files = append(
 			files,
 			&FileData{
-				origPath: path,
-				Path:     destPath,
-				Size:     fileInfo.Size(),
-				MD5Hash:  md5Hash,
+				origPath:   path,
+				Path:       destPath,
+				Size:       fileInfo.Size(),
+				MD5Hash:    fmt.Sprintf("%x", md5Hash),
+				FilePrefix: hashPrefix,
 			},
 		)
 		return nil
