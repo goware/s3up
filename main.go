@@ -25,8 +25,9 @@ var (
 	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
 	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", false,
 		"Compute the md5 hash of a file's contents and set it as a first path segment")
-	syncFlag = flags.Bool("sync", false, "Only upload files that are new or have changed")
-	listFlag = flags.Bool("list", false, "List files data to be processed")
+	hashPrefixBytesFlag = flags.Uint("prefix_bytes", 6, "Number of bytes of md5 hash to use in filename hash. Max 16. 6 and 12 best (base64 encoding)")
+	syncFlag            = flags.Bool("sync", false, "Only upload files that are new or have changed")
+	listFlag            = flags.Bool("list", false, "List files data to be processed")
 )
 
 const VERSION = "0.2.0"
