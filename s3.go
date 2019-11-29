@@ -40,7 +40,7 @@ type FileData struct {
 	origPath   string
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
-	FilePrefix string `json:"file_prefix"`
+	FilePrefix string `json:"hash"`
 	MD5Hash    string `json:"-"`
 }
 

@@ -12,25 +12,24 @@ import (
 var (
 	flags = flag.NewFlagSet("s3up", flag.ExitOnError)
 
-	versionFlag    = flags.Bool("version", false, "print the version and exit")
-	configFlag     = flags.String("config", "", "config file")
-	accessKeyFlag  = flags.String("access_key", "", "s3 access key")
-	secretKeyFlag  = flags.String("secret_key", "", "s3 secret key")
-	regionFlag     = flags.String("region", "", "s3 region")
-	bucketFlag     = flags.String("bucket", "", "s3 bucket")
-	prefixFlag     = flags.String("prefix", "", "s3 path prefix")
-	sourcePathFlag = flags.String("source", "", "local source path to upload")
-	dryrunFlag     = flags.Bool("dryrun", false, "Dryrun, dont upload anything, just list files to upload")
-	confirmFlag    = flags.Bool("confirm", false, "Confirm final settings with user before triggering upload")
-	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
-	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", false,
-		"Compute the md5 hash of a file's contents and set it as a first path segment")
-	hashPrefixBytesFlag = flags.Uint("prefix_bytes", 6, "Number of bytes of md5 hash to use in filename hash. Max 16. 6 and 12 best (base64 encoding)")
+	versionFlag         = flags.Bool("version", false, "print the version and exit")
+	configFlag          = flags.String("config", "", "config file")
+	accessKeyFlag       = flags.String("access-key", "", "s3 access key")
+	secretKeyFlag       = flags.String("secret-key", "", "s3 secret key")
+	regionFlag          = flags.String("region", "", "s3 region")
+	bucketFlag          = flags.String("bucket", "", "s3 bucket")
+	prefixFlag          = flags.String("prefix", "", "s3 path prefix")
+	sourcePathFlag      = flags.String("source", "", "local source path to upload")
+	dryrunFlag          = flags.Bool("dryrun", false, "Dryrun, dont upload anything, just list files to upload")
+	confirmFlag         = flags.Bool("confirm", false, "Confirm final settings with user before triggering upload")
+	parallelFlag        = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
+	hashPrefixFlag      = flags.Bool("auto-content-hash-prefix", false, "Compute the md5 hash of a file's contents and set it as a first path segment")
+	hashPrefixBytesFlag = flags.Uint("content-hash-bytes", 6, "Number of bytes of md5 hash to use in filename hash. Max 16. 6 and 12 best (base64 encoding)")
 	syncFlag            = flags.Bool("sync", false, "Only upload files that are new or have changed")
 	listFlag            = flags.Bool("list", false, "List files data to be processed")
 )
 
-const VERSION = "0.2.0"
+const VERSION = "0.3.0"
 
 func main() {
 	flags.Parse(os.Args[1:])
