@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,7 @@ type FileData struct {
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
 	FilePrefix string `json:"hash"`
+	UploadedTs int64  `json:"ts,omitempty"`
 	MD5Hash    string `json:"-"`
 }
 
@@ -144,11 +146,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		defer file.Close()
 
 		// Skip if path is directory
-		fileInfo, err := file.Stat()
-		if err != nil {
-			return err
-		}
-		if fileInfo.IsDir() {
+		if info.IsDir() {
 			return nil
 		}
 
@@ -161,7 +159,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 
 		// add md5 hash as prefix if required
 		hashPrefix := ""
-		if s.prefixBytes > 0 {
+		if *hashPrefixFlag {
 			hashPrefix = base64.URLEncoding.EncodeToString(md5Hash[:s.prefixBytes])
 		}
 
@@ -173,7 +171,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 			&FileData{
 				origPath:   path,
 				Path:       destPath,
-				Size:       fileInfo.Size(),
+				Size:       info.Size(),
 				MD5Hash:    fmt.Sprintf("%x", md5Hash),
 				FilePrefix: hashPrefix,
 			},
@@ -206,19 +204,13 @@ func (s *S3Upload) uploadFile(fileData *FileData, dryrun bool) (int, error) {
 
 		if err == nil {
 			// file exists on S3, check if we need to proceed with upload
-			if *hashPrefixFlag {
-				// don't upload if md5-hash prefix was used and it is already on S3
-				fmt.Printf("File %s is already on S3\n", fileData.Path)
+			fileData.UploadedTs = headOutput.LastModified.Unix()
+			if headOutput.ETag != nil && strings.Trim(*headOutput.ETag, "\"") == fileData.MD5Hash {
+				fmt.Printf("File %s hasn't been changed (copy on S3 has the same md5-hash in ETag)\n",
+					fileData.Path)
 				return 0, nil
-			} else {
-				// md5-hash wasn't used to upload, lets compare md5-hashes on S3 and local file system
-				if headOutput != nil &&
-					headOutput.ETag != nil && strings.Trim(*headOutput.ETag, "\"") == fileData.MD5Hash {
-					fmt.Printf("File %s hasn't been changed (copy on S3 has the same md5-hash in ETag)\n",
-						fileData.Path)
-					return 0, nil
-				}
 			}
+
 		} else {
 			// check error, return if it is not 404
 			if reqErr, ok := err.(awserr.RequestFailure); !ok {
@@ -262,6 +254,16 @@ func (s *S3Upload) uploadFile(fileData *FileData, dryrun bool) (int, error) {
 	req, _ := s3c.PutObjectRequest(obj)
 	if err := req.Send(); err != nil {
 		return 0, err
+	}
+
+	// request new object to get actual update timestamp
+	if headOutput, err := s3c.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(s.Config.S3.Bucket),
+		Key:    aws.String(fileData.Path),
+	}); err != nil {
+		return 0, err
+	} else {
+		fileData.UploadedTs = headOutput.LastModified.Unix()
 	}
 
 	return 1, nil
@@ -313,5 +315,20 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 	}
 
 	wg.Wait()
+
+	if *manifestFlag != "" {
+		fmt.Printf("Writing manifest file to: %s\n", *manifestFlag)
+		manifestFile, err := os.Create(*manifestFlag)
+		if err != nil {
+			return 0, err
+		}
+		defer manifestFile.Close()
+		enc := json.NewEncoder(manifestFile)
+		enc.SetIndent("", "    ")
+		if err := enc.Encode(files); err != nil {
+			return 0, err
+		}
+	}
+
 	return num, nil
 }
