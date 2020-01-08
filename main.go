@@ -25,7 +25,7 @@ var (
 	confirmFlag = flags.Bool("confirm", false,
 		"Confirm final settings with user before triggering upload")
 	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
-	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", true,
+	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", false,
 		"Compute the md5 hash of a file's contents and us it for first path segment")
 	hashPrefixBytesFlag = flags.Uint("content-hash-bytes", 6,
 		"Number of bytes of md5 hash to use in filename hash. Max 16. 6 and 12 best (base64 encoding)")
