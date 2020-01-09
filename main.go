@@ -37,7 +37,7 @@ var (
 	cacheTTLFlag = flags.Int("cache-ttl", 0, "TTL for cache control headers (in seconds)")
 )
 
-const VERSION = "0.3.0"
+const VERSION = "0.3.1"
 
 func main() {
 	flags.Parse(os.Args[1:])
