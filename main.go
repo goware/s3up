@@ -34,6 +34,7 @@ var (
 	listFlag = flags.Bool("list", false,
 		"List files data to be processed (outputs in JSON format)")
 	manifestFlag = flags.String("manifest", "", "path to write a manifest file")
+	cacheTTLFlag = flags.Int("cache-ttl", 0, "TTL for cache control headers (in seconds)")
 )
 
 const VERSION = "0.3.0"
@@ -74,6 +75,10 @@ func main() {
 	}
 	if *sourcePathFlag != "" {
 		cfg.S3.Source = *sourcePathFlag
+	}
+	if *cacheTTLFlag > 0 {
+		cfg.S3.ExpiresAfterSeconds = *cacheTTLFlag
+		cfg.S3.CacheControl = fmt.Sprintf("public, max-age=%d", *cacheTTLFlag)
 	}
 
 	if cfg.S3.Source == "" {
