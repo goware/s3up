@@ -25,7 +25,7 @@ var (
 	confirmFlag = flags.Bool("confirm", false,
 		"Confirm final settings with user before triggering upload")
 	parallelFlag   = flags.Int("parallel", 10, "Number of parallel uploads (default=10)")
-	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", true,
+	hashPrefixFlag = flags.Bool("auto-content-hash-prefix", false,
 		"Compute the md5 hash of a file's contents and us it for first path segment")
 	hashPrefixBytesFlag = flags.Uint("content-hash-bytes", 6,
 		"Number of bytes of md5 hash to use in filename hash. Max 16. 6 and 12 best (base64 encoding)")
@@ -34,9 +34,10 @@ var (
 	listFlag = flags.Bool("list", false,
 		"List files data to be processed (outputs in JSON format)")
 	manifestFlag = flags.String("manifest", "", "path to write a manifest file")
+	cacheTTLFlag = flags.Int("cache-ttl", 0, "TTL for cache control headers (in seconds)")
 )
 
-const VERSION = "0.3.0"
+const VERSION = "0.3.1"
 
 func main() {
 	flags.Parse(os.Args[1:])
@@ -74,6 +75,10 @@ func main() {
 	}
 	if *sourcePathFlag != "" {
 		cfg.S3.Source = *sourcePathFlag
+	}
+	if *cacheTTLFlag > 0 {
+		cfg.S3.ExpiresAfterSeconds = *cacheTTLFlag
+		cfg.S3.CacheControl = fmt.Sprintf("public, max-age=%d", *cacheTTLFlag)
 	}
 
 	if cfg.S3.Source == "" {
