@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -29,6 +33,7 @@ var (
 	listFlag            = flags.Bool("list", false, "List files data to be processed (outputs in JSON format)")
 	manifestFlag        = flags.String("manifest", "", "path to write a manifest file")
 	cacheTTLFlag        = flags.Int("cache-ttl", 0, "TTL for cache control headers (in seconds)")
+	md5sum              = flags.String("md5sum", "", "Convenience flag to provide md5 sum of filepath")
 )
 
 const VERSION = "0.3.1"
@@ -43,6 +48,15 @@ func main() {
 
 	if *versionFlag {
 		fmt.Println(VERSION)
+		os.Exit(0)
+	}
+
+	if *md5sum != "" {
+		sum, err := getFileMD5(*md5sum)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(sum)
 		os.Exit(0)
 	}
 
@@ -142,4 +156,30 @@ func confirm(cfg *Config) bool {
 	}
 
 	return false
+}
+
+func getFileMD5(path string) (string, error) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return "", errors.Errorf("%s file does not exist", path)
+	}
+
+	if info.IsDir() {
+		return "", errors.Errorf("md5sum cannot run on a directory")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// calculate md5-hash of file
+	h := md5.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+	md5Hash := h.Sum(nil)
+
+	return fmt.Sprintf("%x", md5.Sum(md5Hash)), nil
 }
