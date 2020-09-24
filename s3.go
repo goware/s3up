@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,7 +159,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		// add md5 hash as prefix if required
 		hashPrefix := ""
 		if *hashPrefixFlag {
-			hashPrefix = base64.URLEncoding.EncodeToString(md5Hash[:s.prefixBytes])
+			hashPrefix = Base64UrlEncode(md5Hash[:s.prefixBytes])
 		}
 
 		destPath := filepath.Join("/", hashPrefix, s.Config.S3.Prefix, cpath)
