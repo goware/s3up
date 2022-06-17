@@ -298,7 +298,7 @@ func (s *S3Upload) Upload(parallel int, dryrun bool) (uint64, error) {
 						numRetries -= 1
 						if numRetries > 0 {
 							// retry in 1 second
-							fmt.Printf("failed to upload %s, retrying in 1 second ...\n", fileData.origPath)
+							fmt.Printf("failed to upload %s (error:%v), retrying in 1 second ...\n", fileData.origPath, err)
 							time.Sleep(1 * time.Second)
 							goto RETRY
 						} else {
