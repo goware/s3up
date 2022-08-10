@@ -163,7 +163,11 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		}
 
 		destPath := filepath.Join("/", hashPrefix, s.Config.S3.Prefix, cpath)
-
+		// Normalize path separators on the S3 side to a forward slashm, for OSes like Windows.
+		if os.PathSeparator != '/' {
+			destPath = strings.Replace(destPath, string(os.PathSeparator), "/", -1)
+		}
+		
 		// Add to the list of files to upload
 		files = append(
 			files,
