@@ -1,11 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"mime"
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -39,16 +39,16 @@ func newConfig(file string) (*Config, error) {
 
 	_, err := os.Stat(file)
 	if os.IsNotExist(err) {
-		return nil, errors.Wrap(err, "failed to load config file")
+		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
 	if _, err := toml.DecodeFile(file, cfg); err != nil {
-		return nil, errors.Wrap(err, "failed to parse config file")
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	for _, newMime := range cfg.S3.MimeTypes {
 		if err := mime.AddExtensionType(newMime.Extension, newMime.Type); err != nil {
-			return nil, errors.Wrap(err, "failed to parse config file")
+			return nil, fmt.Errorf("failed to parse config file: %w", err)
 		}
 	}
 

@@ -9,8 +9,6 @@ import (
 	"io"
 	"log"
 	"os"
-
-	"github.com/pkg/errors"
 )
 
 var (
@@ -161,11 +159,11 @@ func confirm(cfg *Config) bool {
 func getFileMD5(path string) (string, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return "", errors.Errorf("%s file does not exist", path)
+		return "", fmt.Errorf("%s file does not exist", path)
 	}
 
 	if info.IsDir() {
-		return "", errors.Errorf("md5sum cannot run on a directory")
+		return "", fmt.Errorf("md5sum cannot run on a directory")
 	}
 
 	file, err := os.Open(path)
