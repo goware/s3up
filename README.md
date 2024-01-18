@@ -6,7 +6,7 @@ copy s3.conf.sample, and go
 
 ## Install
 
-`go get -u github.com/goware/s3up`
+`go install github.com/goware/s3up@latest`
 
 ## Usage
 

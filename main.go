@@ -34,8 +34,6 @@ var (
 	md5sum              = flags.String("md5sum", "", "Convenience flag to provide md5 sum of filepath")
 )
 
-const VERSION = "0.3.2"
-
 func main() {
 	flags.Parse(os.Args[1:])
 
