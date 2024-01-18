@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -23,9 +24,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/mattn/go-zglob"
+	"github.com/opencontainers/selinux/pkg/pwalkdir"
 )
-
-var expiry *time.Time
 
 type S3Upload struct {
 	Config      *Config
@@ -39,7 +39,6 @@ type S3Upload struct {
 type FileData struct {
 	origPath   string
 	Path       string `json:"path"`
-	Size       int64  `json:"size"`
 	FilePrefix string `json:"hash"`
 	UploadedTs int64  `json:"ts,omitempty"`
 	MD5Hash    string `json:"-"`
@@ -123,7 +122,10 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 	var files []*FileData
 	source := s.SourcePath
 
-	err := filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+	err := pwalkdir.Walk(source, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 		// Skip ignored files
 		cpath := strings.TrimPrefix(path, s.SourcePath)
 		if cpath == "" {
@@ -145,7 +147,7 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 		defer file.Close()
 
 		// Skip if path is directory
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 
@@ -174,7 +176,6 @@ func (s *S3Upload) sourceFiles() ([]*FileData, error) {
 			&FileData{
 				origPath:   path,
 				Path:       destPath,
-				Size:       info.Size(),
 				MD5Hash:    fmt.Sprintf("%x", md5Hash),
 				FilePrefix: hashPrefix,
 			},
